@@ -7,7 +7,8 @@ export const openai = new OpenAI({
     timeout: 60000,
 })
 
-export const systemPrompt = "";
+export const systemPrompt = "You are a helpful assistant knowledgeable in real estate. Please answer questions related to real estate properties.";
+
 
 // const output = await openai.chat.completions.create({
 //     model: "gpt-4o-mini",

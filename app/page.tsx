@@ -10,7 +10,7 @@ export default function Home() {
    
   async function createIndexAndEmbedding() {
     setLoading(true);
-    const response = await fetch("/api/setup", {
+    const response = await fetch("/api/admin/dataset/upsert", {
       method: "POST",
     });
     const data = await response.json();

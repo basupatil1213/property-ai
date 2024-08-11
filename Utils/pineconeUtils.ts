@@ -5,6 +5,7 @@ import { OpenAI } from "@langchain/openai";
 import { loadQAStuffChain } from "langchain/chains";
 import { Document } from "langchain/document";
 import { IndexList } from "@pinecone-database/pinecone";
+import { systemPrompt, model as requestModel, openai } from "@/config/openai-config";
 
 export const createPineconeIndex = async () => {
 
@@ -51,7 +52,7 @@ export const updatePinecone = async (
     console.log(`Updating index ${index_name} with ${docs.length} documents`);
 
     const batch: any = []; // Initialize the batch outside the loop
-
+    // let g = 0;
     for (const doc of docs) {
         console.log(`Processing document ${doc.id}`);
         
@@ -60,7 +61,6 @@ export const updatePinecone = async (
             console.error(`Invalid document structure: ${JSON.stringify(doc.pageContent)} ${JSON.stringify(doc.metadata)}, id: ${doc.id}`);
             continue; // Skip invalid documents
         }
-
         console.log(`Adding document ${JSON.stringify(doc)}`);
         const textpath = doc.metadata.source;
         const text = doc.pageContent;
@@ -82,7 +82,7 @@ export const updatePinecone = async (
             
             const chunk = chunks[i];
             const vector = {
-                id: `${textpath}_${Math.round(Math.random() * 1000000)}`,
+                id: `${textpath}_${Math.round(Math.random() * 10000000000)}`,
                 values: embeddings_array[i],
                 metadata: {
                     ...chunk.metadata,
@@ -99,11 +99,27 @@ export const updatePinecone = async (
             //     continue; // Skip if values are missing
             // }
             console.log(`Adding vector ${JSON.stringify(vector)}`);
+
+            // Check total size of the batch
+            const currentBatchSize = batch.reduce((total:number, vector:any) => total + JSON.stringify(vector).length, 0);
+            if (currentBatchSize + JSON.stringify(vector).length > 4194304) { // Limit check
+                console.log(`Batch size limit reached, upserting current batch of size ${batch.length}`);
+                try {
+                    const resp = await index.upsert(batch);
+                    break;
+                    console.log(`response: ${JSON.stringify(resp)}`);
+                    console.log(`Upserted batch of size ${batch.length}`);
+                } catch (error) {
+                    console.error(`Failed to upsert batch: ${error}`);
+                }
+                batch.length = 0; // Clear the batch
+            }
+
             batch.push(vector); // Add to batch
         }
     }
 
-    // Upsert the entire batch at once
+    // Upsert any remaining vectors
     if (batch.length > 0) {
         try {
             const resp = await index.upsert(batch);
@@ -133,15 +149,23 @@ export const queryPinconeVectorStoreandLLM = async (
         console.error(`Invalid question type: ${JSON.stringify(question)} & typeof: ${typeof question}`);
         return null; // Early return if question is not a string
     }
+    // format the query quesiton to say helpful assistant and related to real estate
 
-    const queryEmbedding = await new OpenAIEmbeddings().embedQuery(question);
+    const queryQuestion = `As a helpful assistant for real estate, please provide a detailed answer to the following question: ${question}`;
+
+    const queryEmbedding = await new OpenAIEmbeddings().embedQuery(queryQuestion);
 
     const queryResponse = await index.query({
             vector: queryEmbedding,
-            topK: 1,
+            topK: 10,
             includeMetadata: true,
             includeValues: true,
     });
+
+    // pass this to chat gpt model
+
+
+
 
     console.log(` Response: ${JSON.stringify(queryResponse.matches)} & typeof: ${typeof queryResponse}`);
     console.log(`found ${queryResponse.matches.length} matches`);
@@ -154,9 +178,27 @@ export const queryPinconeVectorStoreandLLM = async (
             .map((match:any) => match.metadata.pageContent)
             .join(" ");
 
+        // call chat completion
+        // const result =  await openai.chat.completions.create({
+        //     model: requestModel,
+        //     messages: [
+        //         {
+        //             role: "system",
+        //             content: systemPrompt,
+        //         },
+        //         {
+        //             role: "user",
+        //             content: concatenatedPages
+        //         }
+                
+        //     ],
+        //     max_tokens: 1036,
+        //     stream: true
+        // });
+
         const result = await chain.call({
             input_documents: [new Document({ pageContent: concatenatedPages })],
-            question: question,
+            question: queryQuestion,
         });
 
         return result;
