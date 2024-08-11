@@ -21,7 +21,7 @@ export async function POST() {
                 acc[key.trim()] = value.trim();
                 return acc;
             }, {});
-
+            
             return {
                 pageContent: JSON.stringify(content),
                 metadata: doc.metadata,
