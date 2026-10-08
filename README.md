@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Property AI — Real Estate RAG Assistant
 
-## Getting Started
+A Next.js "Real Estate AI Assistant" that answers questions about property listings using retrieval-augmented generation (RAG). Listing data from a CSV file is embedded with OpenAI and stored in Pinecone; questions are embedded, matched against the index, and answered by an LLM through a LangChain QA chain.
 
-First, run the development server:
+## How it works
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. **Ingest** — `POST /api/admin/dataset/upsert` reads a CSV of property data, turns each row into a document, splits it with LangChain's `RecursiveCharacterTextSplitter`, creates OpenAI embeddings, and upserts them in batches into a Pinecone serverless index (`property-ai-index-two`, 1536-dim, cosine), creating the index if needed.
+2. **Ask** — `POST /api/chat` with `{ "query": "..." }` embeds the question, retrieves the top 10 matching chunks from Pinecone, and passes them to a LangChain `loadQAStuffChain` with an OpenAI LLM to generate the answer.
+3. **UI** — the home page has a query box ("Ask AI") that calls `/api/chat` and shows the answer.
+
+## Tech stack
+
+Next.js (App Router), TypeScript, LangChain (JS), OpenAI (embeddings + LLM), Pinecone, Tailwind CSS, Material UI
+
+## Project structure
+
+```
+app/api/admin/dataset/upsert/route.ts  # CSV -> embeddings -> Pinecone
+app/api/chat/route.ts                  # question -> retrieval -> LLM answer
+Utils/pineconeUtils.ts                 # index creation, upsert and query helpers
+config/                                # OpenAI and Pinecone clients
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Running locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Install dependencies:
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. Create `.env.local`:
 
-To learn more about Next.js, take a look at the following resources:
+   ```bash
+   OPENAI_API_KEY=...
+   PINECONE_API_KEY=...
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Point the upsert route at your data: the CSV path is currently hard-coded as `filePath` in `app/api/admin/dataset/upsert/route.ts`, so change it to your own CSV file.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+4. Start the dev server, then build the index once and start asking questions:
 
-## Deploy on Vercel
+   ```bash
+   npm run dev
+   curl -X POST http://localhost:3000/api/admin/dataset/upsert
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+   Open http://localhost:3000 and use the "Ask AI" box.
